@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Checkpoint · QR check-in</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#e9ecf8;--ink:#17173a;--card:#fff;--line:#cfd4ec;--accent:#3a46ff;--ok:#0f9d58;--bad:#d93025}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,Segoe UI,Arial,sans-serif}
+h1,h2{font-family:"Bricolage Grotesque",system-ui,sans-serif;margin:0}
+header{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:12px;max-width:900px;margin:0 auto;padding:22px 16px 8px}
+h1{font-size:32px;font-weight:800;letter-spacing:-1px}
+nav{display:flex;background:var(--card);border:2px solid var(--ink);border-radius:999px;padding:3px}
+nav button{border:0;background:none;padding:8px 20px;border-radius:999px;font:600 15px inherit;cursor:pointer;color:var(--ink)}
+nav button.on{background:var(--ink);color:#fff}
+main{max-width:900px;margin:0 auto;padding:8px 16px 60px}
+section{display:none}section.on{display:block}
+.card{background:var(--card);border:2px solid var(--ink);border-radius:18px;padding:20px;margin-top:16px;box-shadow:5px 5px 0 var(--ink)}
+.grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+label{display:block;font-weight:600;margin:12px 0 4px}
+input,select{width:100%;padding:11px 12px;border:2px solid var(--line);border-radius:10px;font:inherit;background:#fff;color:var(--ink)}
+input:focus,select:focus,button:focus-visible{outline:3px solid var(--accent);outline-offset:1px}
+.btn{border:2px solid var(--ink);background:var(--accent);color:#fff;font:600 15px inherit;padding:10px 18px;border-radius:10px;cursor:pointer}
+.btn.alt{background:#fff;color:var(--ink)}.btn.bad{background:#fff;color:var(--bad);border-color:var(--bad)}
+.row{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}
+#qr{display:flex;justify-content:center;margin-top:18px}
+#qr img,#qr canvas{padding:10px;background:#fff;border:2px solid var(--ink);border-radius:12px}
+#reader{max-width:360px;margin:14px auto 0}
+#result{margin-top:14px;padding:14px;border-radius:12px;background:var(--bg);font-weight:600;min-height:52px}
+#result.ok{background:#d7f3e3;color:#07663a}#result.bad{background:#fbe0de;color:#8c1d14}
+.count{font:800 56px/1 "Bricolage Grotesque",sans-serif}
+.wrap{overflow-x:auto;margin-top:12px}
+table{width:100%;border-collapse:collapse;min-width:420px}
+th,td{text-align:left;padding:9px 8px;border-bottom:1px solid var(--line)}
+th{font-size:14px;color:#55587f}
+#sync{font-size:14px;color:#55587f}
+.note{font-size:14px;color:#55587f;margin:6px 0 0}
+</style>
+</head>
+<body>
+<header>
+  <h1>Checkpoint</h1>
+  <nav>
+    <button id="t-me" class="on" onclick="tab('me')">I'm attending</button>
+    <button id="t-host" onclick="tab('host')">I'm hosting</button>
+  </nav>
+</header>
+
+<main>
+<!-- ATTENDEE -->
+<section id="me" class="on">
+  <div class="card">
+    <h2>Get your check-in code</h2>
+    <p class="note">Fill this in, then show the code to the host.</p>
+    <label for="sid">ID</label><input id="sid" autocomplete="off">
+    <label for="sname">Name</label><input id="sname" autocomplete="name">
+    <label for="sgroup">Group</label><input id="sgroup" autocomplete="off">
+    <div class="row"><button class="btn" onclick="makeQR()">Create my code</button></div>
+    <div id="qr"></div>
+  </div>
+</section>
+
+<!-- HOST -->
+<section id="host">
+  <div class="card">
+    <label for="ev">Event</label>
+    <select id="ev" onchange="render()"></select>
+    <div class="row">
+      <input id="newEv" placeholder="New event name, e.g. Lecture 4" style="flex:1;min-width:200px">
+      <button class="btn alt" onclick="addEvent()">Add event</button>
+    </div>
+    <p id="sync"></p>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Scan</h2>
+      <div class="row">
+        <button class="btn" onclick="startScan()">Start camera</button>
+        <button class="btn alt" onclick="stopScan()">Stop</button>
+      </div>
+      <div id="reader"></div>
+      <div id="result">Waiting for a code…</div>
+    </div>
+    <div class="card">
+      <h2>Checked in</h2>
+      <div class="count" id="count">0</div>
+      <input id="q" placeholder="Search by ID or name" oninput="render()" style="margin-top:14px">
+      <div class="row">
+        <button class="btn alt" onclick="exportCSV()">Export CSV</button>
+        <button class="btn bad" onclick="resetEvent()">Clear this event</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="wrap">
+      <table>
+        <thead><tr><th>ID</th><th>Name</th><th>Group</th><th>Time</th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </div>
+</section>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+<script src="https://unpkg.com/html5-qrcode"></script>
+<script>
+/* ONLINE SAVING (optional): paste your Firebase Realtime Database URL here,
+   e.g. "https://my-project-default-rtdb.firebaseio.com". Leave "" to save on this device only. */
+const FIREBASE_URL = "";
+
+const $ = id => document.getElementById(id);
+const key = s => String(s).replace(/[.$#\[\]\/]/g, "_");
+let db = load();            // { events:[...], records:{ event:{ id:{...} } } }
+let scanner = null, scanning = false, lastText = "", lastAt = 0;
+
+function load(){
+  try { const d = JSON.parse(localStorage.getItem("checkpoint")); if (d && d.events) return d; } catch(e){}
+  return { events:["Event 1"], records:{} };
+}
+function persist(){ try { localStorage.setItem("checkpoint", JSON.stringify(db)); } catch(e){} }
+function tab(t){
+  ["me","host"].forEach(x => { $(x).classList.toggle("on", x===t); $("t-"+x).classList.toggle("on", x===t); });
+  if (t!=="host") stopScan();
+}
+
+/* ---------- attendee ---------- */
+function makeQR(){
+  const id=$("sid").value.trim(), name=$("sname").value.trim(), group=$("sgroup").value.trim();
+  if(!id||!name||!group){ alert("Please fill in ID, name and group."); return; }
+  if((id+name+group).includes("|")){ alert("Please don't use the | character."); return; }
+  $("qr").innerHTML = "";
+  new QRCode($("qr"), { text: id+"|"+name+"|"+group, width:220, height:220 });
+}
+
+/* ---------- events ---------- */
+function cur(){ return $("ev").value; }
+function addEvent(){
+  const n=$("newEv").value.trim(); if(!n) return;
+  if(!db.events.includes(n)) db.events.push(n);
+  $("newEv").value=""; persist(); remote("PUT","events/"+key(n), n);
+  fillEvents(n); render();
+}
+function fillEvents(sel){
+  $("ev").innerHTML="";
+  db.events.forEach(e => { const o=document.createElement("option"); o.value=o.textContent=e; $("ev").appendChild(o); });
+  if(sel) $("ev").value=sel;
+}
+
+/* ---------- scanning ---------- */
+function say(msg, cls){ const r=$("result"); r.textContent=msg; r.className=cls||""; }
+function startScan(){
+  if(scanning) return;
+  scanner = new Html5Qrcode("reader");
+  scanner.start({facingMode:"environment"}, {fps:10, qrbox:240}, onScan)
+    .then(()=>{scanning=true;})
+    .catch(()=>alert("Camera didn't open. Allow camera access and use an https link."));
+}
+function stopScan(){
+  if(scanner && scanning){ scanning=false; scanner.stop().catch(()=>{}); }
+}
+function onScan(text){
+  const now=Date.now();
+  if(text===lastText && now-lastAt<3000) return;
+  lastText=text; lastAt=now;
+  const p=text.split("|"), id=(p[0]||"").trim(), name=(p[1]||"").trim(), group=(p[2]||"").trim();
+  if(!id||!name||!group){ say("That isn't a check-in code.","bad"); return; }
+  const ev=cur(); db.records[ev]=db.records[ev]||{};
+  if(db.records[ev][key(id)]){ say(name+" is already checked in.","bad"); return; }
+  const rec={id,name,group,time:new Date().toLocaleTimeString()};
+  db.records[ev][key(id)]=rec; persist();
+  remote("PUT","records/"+key(ev)+"/"+key(id), Object.assign({event:ev},rec));
+  say("✓ "+name+" checked in.","ok"); render();
+}
+
+/* ---------- table / export / reset ---------- */
+function list(){ return Object.values(db.records[cur()]||{}); }
+function render(){
+  const s=$("q").value.toLowerCase(), all=list();
+  $("count").textContent=all.length;
+  const body=$("rows"); body.innerHTML="";
+  all.filter(r=>r.id.toLowerCase().includes(s)||r.name.toLowerCase().includes(s)).forEach(r=>{
+    const tr=document.createElement("tr");
+    [r.id,r.name,r.group,r.time].forEach(v=>{ const td=document.createElement("td"); td.textContent=v; tr.appendChild(td); });
+    body.appendChild(tr);
+  });
+}
+function exportCSV(){
+  const q=v=>'"'+String(v).replace(/"/g,'""')+'"';
+  const lines=["ID,Name,Group,Time"].concat(list().map(r=>[r.id,r.name,r.group,r.time].map(q).join(",")));
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob(["\uFEFF"+lines.join("\n")],{type:"text/csv;charset=utf-8"}));
+  a.download=cur().replace(/\W+/g,"_")+".csv"; a.click(); URL.revokeObjectURL(a.href);
+}
+function resetEvent(){
+  if(!confirm("Delete all check-ins for \""+cur()+"\"?")) return;
+  delete db.records[cur()]; persist(); remote("DELETE","records/"+key(cur())); say("Cleared.",""); render();
+}
+
+/* ---------- online saving (Firebase REST) ---------- */
+function remote(method, path, body){
+  if(!FIREBASE_URL) return;
+  fetch(FIREBASE_URL.replace(/\/$/,"")+"/"+path+".json", {
+    method, headers:{"Content-Type":"application/json"}, body: body===undefined?undefined:JSON.stringify(body)
+  }).catch(()=>$("sync").textContent="Offline: changes are saved on this device only.");
+}
+function pull(){
+  if(!FIREBASE_URL) return;
+  fetch(FIREBASE_URL.replace(/\/$/,"")+"/.json").then(r=>r.json()).then(d=>{
+    if(!d) return;
+    Object.values(d.events||{}).forEach(e=>{ if(!db.events.includes(e)) db.events.push(e); });
+    const byEvent={};
+    Object.values(d.records||{}).forEach(m=>Object.values(m).forEach(r=>{
+      (byEvent[r.event]=byEvent[r.event]||{})[key(r.id)]=r;
+    }));
+    // replace local records with the shared copy so deletes sync too
+    Object.keys(byEvent).forEach(e=>{ if(!db.events.includes(e)) db.events.push(e); });
+    db.records=byEvent; persist();
+    const keep=cur(); fillEvents(keep); render();
+    $("sync").textContent="Synced online ✓";
+  }).catch(()=>$("sync").textContent="Offline: changes are saved on this device only.");
+}
+
+fillEvents(); render();
+$("sync").textContent = FIREBASE_URL ? "Connecting…" : "Saved on this device only.";
+pull(); setInterval(pull, 8000);
+</script>
+</body>
+</html>
